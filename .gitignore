@@ -1,0 +1,50 @@
+# ============================================================
+# FORGE API #2 — OCCULTEUR
+# Template Python standard + additions specifiques Forge.
+# Ce fichier est une portiere : ce qu'il liste ne monte JAMAIS
+# sur GitHub, meme avec un 'git add .' distrait.
+# ============================================================
+
+# --- Python (template standard) ---
+__pycache__/
+*.py[codz]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints
+
+# --- Environnements : C'EST I QUE DORMENT LES SECRETS ---
+.env
+.env.*
+.envrc
+.venv/
+venv/
+ENV/
+*.secret
+secrets.*
+.pypirc
+
+# --- Artefacts generes (jamais de donnees de test dans le repo) ---
+smoke_out.json
+*.log
+
+# --- Deploiement Cloudflare (etat local) ---
+.wrangler/
+node_modules/
+
+# ============================================================
+# PLOMBERIE DE DEPLOIEMENT — reste sur le disque, jamais committee.
+# Meme choix que l'API 1 (miroir) : le repo public porte le logiciel
+# auditable (moteur + logique + api.py local), pas l'infrastructure.
+# ============================================================
+worker.py
+wrangler.toml
+smoke_test.ps1
