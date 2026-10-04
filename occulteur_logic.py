@@ -112,8 +112,11 @@ def handle(method, path, body_text="", content_type=""):
                         return 400, {"error": f"'{k}' must be a list"}
                     kwargs[k] = data[k]
         try:
-            return 200, (engine.mask(text, **kwargs) if path == "/mask"
-                         else engine.scan(text, **kwargs))
+            if path == "/mask":
+                return 200, engine.mask(text, **kwargs)
+            # scan() = contrat sortant : pas de mode/salt (sinon TypeError -> 500)
+            kw_scan = {k: v for k, v in kwargs.items() if k not in ("mode", "salt")}
+            return 200, engine.scan(text, **kw_scan)
         except ValueError as e:
             return 400, {"error": str(e)}
 
