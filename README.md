@@ -1,5 +1,14 @@
 # OCCULTEUR v1.2 (ex-Le Confesseur)
 
+## ⚠️ AVERTISSEMENT LÉGAL (RGPD / LOI INFORMATIQUE ET LIBERTÉS)
+CE LOGICIEL EST UN OUTIL TECHNIQUE EXPÉRIMENTAL.
+- **Il ne garantit PAS la conformité RGPD** ou toute autre réglementation.
+- **L’auteur ne peut être tenu responsable** en cas de fuite de données, même partielle.
+- **À utiliser UNIQUEMENT en environnement isolé** (ex: sandbox interne, pas en production).
+- **Toute utilisation en production doit faire l’objet d’un audit juridique et technique indépendant**.
+
+Phases de test avant déploiement.
+
 **Moteur de pseudonymisation / anonymisation de PII françaises dans du texte libre.**
 Stdlib only. Déterministe byte-for-byte. Zéro état serveur. Aucun appel réseau.
 
