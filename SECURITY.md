@@ -29,3 +29,11 @@ Les signalements sont donc traités comme sensibles.
   sa mise en face d'Internet sans garde périphérique n'est pas une
   vulnérabilité, c'est un mauvais déploiement — documenté dans son
   docstring.
+## ⚠️ Limitations connues
+   Limitation | Impact | Solution |
+ |------------|--------|----------|
+ | Faux positifs CB (IMEI, numéros de série) | Données non-PII masquées | Allowlister les numéros internes |
+ | Détection basée sur des heuristiques | Faux négatifs possibles | Combiner avec d'autres outils |
+ | Pas de support pour les PDFs/images | PII non détectées | Utiliser un OCR en amont |
+ | Déterminisme dépend de Python 3.11 | Résultats différents entre versions | Figes la version de Python |
+ | `mode=hash` réversible si le sel fuit | Risque de ré-identification | Garder le sel secret |
