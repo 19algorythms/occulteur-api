@@ -207,3 +207,4 @@ marques de l'auteur : la licence couvre le code, pas la marque.
 ## Auteurs
 
 Conçu et forgé par **Architecte1995** (Antoine Couet), avec **Kimi K 2.6 Thinking** et **K3** (Moonshot AI)
+Premier audit par mistral-medium-3-5 (Mistral AI).
