@@ -2,9 +2,11 @@
 51 tests v1.1 préservés verbatim (non-régression) + 8 nouveaux :
 NIR capture lâche 3 (DOM 971, corse minuscule, mois 00 rejeté),
 CB-KEYWORD \b 1 (visa/visage), dates ISO 1, entities sur suspicions 2,
-restore mapping vide 1."""
+restore mapping vide 1.
+v1.3 : verrou jeton hash = "h:" + 128 hex (SHA3-512 complet, troncature 48 bits révolue)."""
+import os
 import sys
-sys.path.insert(0, "/mnt/agents/output")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # repo root
 from occulteur_engine import (mask, restore, scan, luhn_ok, compute_nir_key, rib_key,
                               iban_ok, MAX_CHARS, VERSION)
 
@@ -189,7 +191,10 @@ def t_hash():
     r = mask(txt, mode="hash", salt="sel-super-secret")
     toks = [d["token"] for d in r["report"]["details"]]
     assert toks[0] == toks[1] and toks[0] != toks[2], toks
-    assert all(t.startswith("h:") and len(t) == 14 for t in toks)
+    # v1.3 : "h:" + SHA3-512 complet (128 hex) = 130 caractères.
+    # L'ancien format tronqué (12 hex = 14 caractères) est révolu.
+    assert all(t.startswith("h:") and len(t) == 130 for t in toks)
+    assert all(all(c in "0123456789abcdef" for c in t[2:]) for t in toks)
     r2 = mask(txt, mode="hash", salt="sel-super-secret")
     assert r["masked_text"] == r2["masked_text"]
 
