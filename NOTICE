@@ -1,0 +1,27 @@
+# NOTICE - Occulteur API
+
+Ce logiciel est protégé par la **Functional Source License, Version 1.1, ALv2 Future License (FSL-1.1-ALv2)**.
+
+## Restrictions d'usage
+- **Interdiction de concurrence** : Toute utilisation de ce code pour créer un produit ou service **concurrent** (offrant la même fonctionnalité de masquage/anonymisation de PII) est **strictement interdite** sans accord écrit de l'auteur.
+- **Usage autorisé** : Intégration interne, recherche, éducation, services professionnels **non-concurrents**.
+- **Passage en Apache-2.0** : Ce code basculera automatiquement en **Apache License 2.0** le **4 octobre 2028** (2 ans après la v1.2).
+
+## Marque déposée
+- **"Occulteur"** et **"Cathédrale1995"** sont des marques de l'auteur.
+- Toute utilisation commerciale de ces marques **doit faire l'objet d'une autorisation écrite**.
+
+## Contact
+Pour toute question sur la licence ou un usage commercial :
+- Email : 19algorythms@proton.me
+
+## Exemples de violations
+❌ **Interdit** :
+- Créer un SaaS de masquage de PII en utilisant ce code.
+- Vendre une API de pseudonymisation basée sur Occulteur.
+- Intégrer ce moteur dans un produit commercial **sans valeur ajoutée**.
+
+✅ **Autorisé** :
+- Utiliser Occulteur en interne pour sécuriser vos flux LLM.
+- Proposer du support ou de l'intégration **autour** d'Occulteur.
+- Contribuer au projet open-source.
