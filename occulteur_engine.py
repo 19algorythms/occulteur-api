@@ -29,12 +29,34 @@ v1.2 (2026-10-04) — revue Serrement des Serres (Kimi) :
      oublié ou mode anonymize) ; mapping None (anonymize) déjà rejeté.
   + Limite documentée : tout run de 13-19 chiffres Luhn-valide est traité
     comme une CB (faux positifs possibles : IMEI, numéros de série).
+
+v1.3 (2026-10-07) — revue croisée Serrement des Serres (Kimi x Medium 3.5) :
+  1. scan() ne retourne JAMAIS de champ "raw" dans les suspicions
+     (audit externe Medium 3.5 : un CB-KEYWORD suspicion pouvait exposer un
+     numéro réel en clair — contradiction totale avec le contrat sortant).
+  2. Validation stricte de `entities` : valeur hors périmètre -> ValueError
+     explicite (avant : ignoré silencieusement = moteur aveugle sur faute
+     de frappe de config).
+  3. nir_ok() : table des départements NIR complète ET correcte
+     (01-95, 2A/2B, 99 naissance à l'étranger, DOM 971-977, 984, 986-989).
+     NB : l'audit Medium 3.5 proposait 01-95 + 971-976 — sa liste CASSAIT
+     les vrais NIR 99 (Français nés à l'étranger) : jamais copier un patch
+     sans vérifier la nomenclature INSEE.
+  4. Sanitisation des regex allowlist clientes : refus des constructeurs
+     de ReDoS (+ * { }) -> ValueError. La LENIENT_ALLOWLIST interne
+     (fixe, auditée) n'est pas concernée. Garde-fou défense-en-profondeur.
+  5. restore() : remplacement single-pass par parsing de jetons
+     (re.sub sur \\[[A-Z_]+_\\d+\\]) — fini le replace séquentiel
+     sensible à l'ordre et aux valeurs contenant des jetons.
+  6. hash : SHA3-512 complet (128 hex), troncature 48 bits supprimée.
+     Jeton long par choix : sécurité réelle ET visibilité pédagogique
+     pour les employés. Coût de calcul : une itération HMAC, négligeable.
 """
 import re, hmac, hashlib, unicodedata
 from dataclasses import dataclass
 
 MAX_CHARS = 50_000
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 CB_KEYWORD_WINDOW = 60
 
 # ---------------------------------------------------------------- checksums
@@ -57,11 +79,20 @@ def compute_nir_key(base13: str) -> int:
     n = base13.upper().replace("2A", "19").replace("2B", "18")
     return 97 - (int(n) % 97)
 
+# Nomenclature INSEE des codes département du NIR — complète ET correcte :
+# 01-95 métropole (96 n'existe pas), 2A/2B Corse, 99 naissance à l'étranger,
+# DOM/TOM à 3 chiffres (commune réduite à 2 chiffres, total toujours 13).
+# Revue v1.3 : l'audit externe proposait 01-95 + 971-976 — liste incomplète
+# qui cassait les vrais NIR 99. La source, c'est l'INSEE, pas un LLM.
+NIR_DEPT_2 = {f"{i:02d}" for i in range(1, 96)} | {"2A", "2B", "99"}
+NIR_DEPT_3 = {"971", "972", "973", "974", "975", "976", "977", "978",
+              "984", "986", "987", "988", "989"}
+
 def nir_ok(nir15: str) -> bool:
-    """Juge = clé 97. Structure légère : mois jamais 00 ; 2A/2B (minuscules
-    acceptés) uniquement en position département ; département 2 OU 3
-    chiffres (DOM 971-976 : la commune est alors réduite à 2 chiffres,
-    le total fait toujours 13)."""
+    """Juge = clé 97. Structure légère : mois jamais 00 ; département dans
+    NIR_DEPT_2 (2 chiffres) ou NIR_DEPT_3 (DOM : 3 chiffres, la commune est
+    alors réduite à 2 chiffres, le total fait toujours 13) ; hors
+    département : chiffres uniquement."""
     s = nir15.upper()
     if len(s) != 15:
         return False
@@ -70,9 +101,12 @@ def nir_ok(nir15: str) -> bool:
         return False
     if not base[3:5].isdigit() or base[3:5] == "00":   # mois 01-99, jamais 00
         return False
-    if not (base[5:7].isdigit() or base[5:7] in ("2A", "2B")):
-        return False
-    core = base[:5] + base[7:]                          # hors département : chiffres uniquement
+    if base[5:7] not in NIR_DEPT_2:
+        if base[5:8] not in NIR_DEPT_3:                # DOM à 3 chiffres
+            return False
+        core = base[:5] + base[8:]                     # hors DOM : chiffres uniquement
+    else:
+        core = base[:5] + base[7:]
     if not core.isdigit():
         return False
     return compute_nir_key(base) == int(key)
@@ -186,14 +220,28 @@ LENIENT_ALLOWLIST = [
     r"regex:(?:0199|33199|0033199)\d{6}",
 ]
 
-def _compile_allowlist(entries):
-    """Sépare chaînes exactes et motifs 'regex:...' (compilés une fois par appel)."""
+MAX_ALLOWLIST_ENTRIES = 200
+_REDOSSY = re.compile(r"[+*{]")   # constructeurs de nesting ReDoS classique
+
+def _compile_allowlist(entries, guarded: bool = False):
+    """Sépare chaînes exactes et motifs 'regex:...' (compilés une fois par appel).
+    v1.3 : en mode guarded (regex CLIENTES), refuse les constructeurs de
+    nesting ReDoS (+ * {) et borne la taille de la liste. La
+    LENIENT_ALLOWLIST interne (fixe, auditée, compilée sans garde) n'est
+    pas concernée. Defense-in-depth : l'allowlist est un paramètre de
+    confiance côté appelant, mais un garde-fou coûte trois lignes."""
+    if guarded and entries and len(entries) > MAX_ALLOWLIST_ENTRIES:
+        raise ValueError(f"allowlist trop longue : {len(entries)} > {MAX_ALLOWLIST_ENTRIES}")
     exact, regexes = set(), []
     for e in entries or []:
         if not isinstance(e, str):
             raise ValueError("entrée allowlist non textuelle")
         if e.startswith("regex:"):
-            regexes.append(re.compile(e[len("regex:"):]))
+            pat = e[len("regex:"):]
+            if guarded and _REDOSSY.search(pat):
+                raise ValueError("regex allowlist refusée (constructeur ReDoS "
+                                 "+ * { interdit) : " + pat[:40])
+            regexes.append(re.compile(pat))
         else:
             exact.add(e)
     return exact, regexes
@@ -223,16 +271,28 @@ def _classify_run(raw: str):
         return "cb", "Carte bancaire valide (Luhn)", 1.0
     return None
 
+# Périmètre exhaustif des familles détectables — validation stricte v1.3 :
+# avant, entities=["invalid"] était ignoré silencieusement et le moteur
+# détectait... rien, sans erreur. Une faute de frappe de config rendait
+# l'OCCULTEUR aveugle. Dorénavant : erreur explicite.
+VALID_ENTITIES = set(LABEL)
+
 def detect(text: str, detect_secrets: bool = True, entities=None,
            allowlist=None, profile: str = "strict"):
     """Retourne (findings, suspicions, stats). stats['allowlisted'] compte les
     signaux ignorés (Couche A ET B) par l'allowlist / le profil lenient."""
     if profile not in ("strict", "lenient"):
         raise ValueError("profile doit être 'strict' ou 'lenient'")
+    if entities not in (None, ["all"]):
+        bad = set(entities) - VALID_ENTITIES
+        if bad:
+            raise ValueError(f"entities invalides : {sorted(bad)} — "
+                             f"périmètre : {sorted(VALID_ENTITIES)}")
     entries = list(allowlist or [])
+    exact, regexes = _compile_allowlist(entries, guarded=True)
     if profile == "lenient":
-        entries = entries + LENIENT_ALLOWLIST
-    exact, regexes = _compile_allowlist(entries)
+        le, lr = _compile_allowlist(LENIENT_ALLOWLIST)   # interne : fixe, auditée
+        exact |= le; regexes += lr
 
     findings, suspicions = [], []
     allowed = None if entities in (None, ["all"]) else set(entities)
@@ -385,9 +445,12 @@ def detect(text: str, detect_secrets: bool = True, entities=None,
 
 USAGE_BASE = ("Le mapping ne voyage JAMAIS vers le LLM. L'API ne stocke rien. "
               "Couche B = suspicions signalées, jamais décidées seules. "
-              "Limite : tout run de 13-19 chiffres Luhn-valide est traité comme "
-              "une carte bancaire (faux positifs possibles : IMEI, numéros de "
-              "série — allowlistez-les si besoin).")
+              "Mode hash : HMAC-SHA3-512 complet (128 hex) — pseudonymisation, "
+              "pas anonymisation : si le sel fuit, un espace d'entrée petit "
+              "(~10^9 téléphones) reste brute-forçable. Le sel ne quitte jamais "
+              "le client. Limite : tout run de 13-19 chiffres Luhn-valide est "
+              "traité comme une carte bancaire (faux positifs possibles : IMEI, "
+              "numéros de série — allowlistez-les si besoin).")
 USAGE_ANONYMIZE = ("Mode anonymize : IRRÉVERSIBLE par construction — aucun mapping n'est "
                    "produit ni retourné, la restauration est impossible. "
                    + USAGE_BASE)
@@ -406,8 +469,12 @@ def mask(text: str, mode: str = "tag", salt: str = None, detect_secrets: bool = 
     for f in kept:
         counters[f.type] = counters.get(f.type, 0) + 1
         if mode == "hash":
+            # v1.3 : SHA3-512 COMPLET (128 hex) — fini la troncature 48 bits.
+            # Le jeton long est un choix assumé : il rend la protection
+            # VISIBLE pour les employés (sensibilisation sans les taper)
+            # et le coût de calcul reste négligeable (une itération HMAC).
             token = "h:" + hmac.new(salt.encode(), normalize_for_hash(f.raw).encode(),
-                                    hashlib.sha256).hexdigest()[:12]
+                                    hashlib.sha3_512).hexdigest()
         else:
             token = f"[{LABEL[f.type]}_{counters[f.type]}]"
         if mode != "anonymize":
@@ -449,30 +516,43 @@ def scan(text: str, detect_secrets: bool = True, entities=None,
         details.append({"type": f.type, "position": [f.start, f.end],
                         "original_length": len(f.raw), "code": f.code,
                         "confidence": f.confidence, "reason": f.reason})
+    # v1.3 (audit Medium 3.5, revue Kimi) : le contrat sortant interdit TOUTE
+    # valeur brute. Une suspicion CB-KEYWORD portait jusqu'ici le run complet
+    # — potentiellement un vrai numéro de carte — dans le rapport. Fini.
+    suspicions_out = [{k: v for k, v in s.items() if k != "raw"}
+                      for s in suspicions]
     return {
         "report": {
             "contains_pii": any(f.type not in SECRET_TYPES for f in kept),
             "contains_secrets": any(f.type in SECRET_TYPES for f in kept),
             "entities": counts,
             "details": details,
-            "suspicions": suspicions,
+            "suspicions": suspicions_out,
             "allowlisted": stats["allowlisted"],
             "allowlisted_breakdown": stats["allowlisted_breakdown"],
         },
         "limits": {"max_chars": MAX_CHARS,
                    "usage_note": "Scan = contrôle sortant : rapport complet, jamais de texte "
-                                 "masqué, jamais de mapping. " + USAGE_BASE},
+                                 "masqué, jamais de mapping, jamais de valeur brute "
+                                 "(suspicions sans champ 'raw'). " + USAGE_BASE},
         "version": VERSION,
     }
 
 def restore(masked_text: str, mapping: dict) -> str:
+    """Single-pass v1.3 : les jetons sont parsés par regex et remplacés en
+    UNE SEULE passe via re.sub — fini le replace séquentiel trié par
+    longueur, sensible à l'ordre et aux valeurs contenant des jetons."""
     if mapping is None:
         raise ValueError("mapping absent : un texte produit en mode anonymize est "
                          "irréversible par construction")
-    if not mapping and re.search(r"\[[A-Z_]+_\d+\]", masked_text):
+    if not mapping and re.search(r"\[[A-Z_]+_\d+\]|h:[0-9a-f]{16,}", masked_text):
         raise ValueError("jetons présents mais mapping vide : mapping oublié "
                          "ou texte issu du mode anonymize")
-    out = masked_text
-    for token in sorted(mapping, key=len, reverse=True):
-        out = out.replace(token, mapping[token])
-    return out
+    def _repl(m):
+        tok = m.group(0)
+        if tok not in mapping:
+            raise ValueError(f"jeton inconnu du mapping : {tok}")
+        return mapping[tok]
+    # Deux familles de jetons : [TYPE_N] (tag/anonymize) et h:<hex> (hash,
+    # SHA3-512 = 128 hex depuis v1.3 — le {16,} garde la compat ascendante).
+    return re.sub(r"\[[A-Z_]+_\d+\]|h:[0-9a-f]{16,}", _repl, masked_text)

@@ -1,4 +1,4 @@
-# OCCULTEUR v1.2 — Exemples
+# OCCULTEUR v1.3 — Exemples
 
 Chaque exemple ci-dessous est **généré par le moteur réel** (`python examples.py`),
 pas rédigé à la main. Le moteur est déterministe byte-for-byte : vous reproduisez
@@ -32,6 +32,9 @@ contains_pii : True
 entities     : {'email': 1, 'phone_fr': 1}
 suspicions   : []
 ```
+
+Depuis v1.3, les suspicions de `scan()` n'ont **aucun champ `raw`** :
+aucune valeur brute ne sort par le contrôle sortant.
 
 ## 3. mask(mode='anonymize') — IRRÉVERSIBLE, mapping jamais produit
 
@@ -76,8 +79,9 @@ entities    : {'nir': 2}
 
 - Tout run de 13-19 chiffres **Luhn-valide** est traité comme une carte bancaire :
   un IMEI ou numéro de série peut être masqué en `CB`. Allowlistez-le.
-- Hash 48 bits = **corrélation déterministe**, pas anonymisation cryptographique
-  (espace petit brute-forçable si le sel fuit — le sel ne quitte jamais le client).
+- Hash = HMAC-SHA3-512 complet, 128 hex (v1.3) = **corrélation déterministe**,
+  pas anonymisation cryptographique (un espace d'entrée petit reste
+  énumérable si le sel fuit — le sel ne quitte jamais le client).
 - Détection des personnes physiques : heuristique à dictionnaire, coverage 60-70 %.
 - Couche B (suspicions) : signalée, **jamais décidée seule**.
 

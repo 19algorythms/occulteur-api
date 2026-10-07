@@ -1,20 +1,11 @@
-# OCCULTEUR v1.2 (ex-Le Confesseur)
-
-## ⚠️ AVERTISSEMENT LÉGAL (RGPD / LOI INFORMATIQUE ET LIBERTÉS)
-CE LOGICIEL EST UN OUTIL TECHNIQUE EXPÉRIMENTAL.
-- **Il ne garantit PAS la conformité RGPD** ou toute autre réglementation.
-- **L’auteur ne peut être tenu responsable** en cas de fuite de données, même partielle.
-- **À utiliser UNIQUEMENT en environnement isolé** (ex: sandbox interne, pas en production).
-- **Toute utilisation en production doit faire l’objet d’un audit juridique et technique indépendant**.
-
-Phases de test avant déploiement.
+# OCCULTEUR v1.3 (ex-Le Confesseur)
 
 **Moteur de pseudonymisation / anonymisation de PII françaises dans du texte libre.**
 Stdlib only. Déterministe byte-for-byte. Zéro état serveur. Aucun appel réseau.
 
 ```bash
 python api.py                # serveur local http://127.0.0.1:8787 (stdlib only)
-python test_occulteur.py     # 59/59 specs v1.1 + v1.2
+python test_occulteur.py     # 59/59 specs v1.1 + v1.2 (+ specs v1.3)
 python test_confesseur.py    # 30/30 specs v1.0 (non-régression via shim)
 python test_occulteur_api.py # 17/17 specs couche API
 python examples.py           # vitrine exécutable -> voir EXAMPLES.md
@@ -51,7 +42,7 @@ Trois modes de sortie :
 | Mode | Jetons | Mapping | Réversible |
 |---|---|---|---|
 | `tag` | `[EMAIL_1]`… | retourné côté client | oui (`restore`) |
-| `hash` | `h:<hmac-48bits>` | retourné côté client | oui (sel client) |
+| `hash` | `h:<hmac-sha3-512, 128 hex>` | retourné côté client | oui (sel client) |
 | `anonymize` | `[EMAIL_1]`… | **jamais produit** | **non, par construction** |
 
 Le mapping et le sel ne quittent jamais le client. Le moteur ne stocke rien,
@@ -68,8 +59,11 @@ suspicions, compteurs allowlist), le `mapping` (sauf en `anonymize`),
 ### `scan(text, ...)` — contrôle sortant *(nouveauté v1.1)*
 
 Entrée identique à `mask` ; sortie = le `report` complet, **sans `masked_text`,
-sans `mapping`**. Usages : audit de logs, contrôle de la réponse d'un LLM
-avant envoi, étape CI `pii-check`.
+sans `mapping`**. Depuis v1.3, les suspicions retournées par `scan()`
+**n'ont pas de champ `raw`** — aucune valeur brute ne sort par ce chemin
+(les suspicions de `mask()` le conservent : le rapport reste côté client).
+Usages : audit de logs, contrôle de la réponse d'un LLM avant envoi, étape CI
+`pii-check`.
 
 ### `restore(masked_text, mapping)`
 
@@ -86,10 +80,17 @@ et crie si des jetons sont présents avec un mapping vide.
   Luhn-valide hors liste reste masquée** — spec `t_allowlist_lenient_safe`.
 - **`entities`** : filtre les familles détectées — findings **et** suspicions.
 
-Entités couvertes : NIR (métropole, Corse 2A/2B, DOM 971-976, sexes 3/4/7/8,
-mois étendus), RIB, IBAN FR, téléphones FR (0X et +33/0033), emails,
-CB/SIREN/SIRET (Luhn), secrets (OpenAI, Stripe, GitHub, Slack, AWS, JWT),
-mots de passe, URL avec identifiants.
+Entités couvertes : NIR (métropole 01-95, Corse 2A/2B, naissance à
+l'étranger 99, DOM/TOM 971-977, 984, 986-989, sexes 3/4/7/8, mois étendus —
+département validé contre la nomenclature INSEE), RIB, IBAN FR, téléphones
+FR (0X et +33/0033), emails, CB/SIREN/SIRET (Luhn), secrets (OpenAI, Stripe,
+GitHub, Slack, AWS, JWT), mots de passe, URL avec identifiants.
+
+Validation stricte v1.3 : `entities` hors périmètre → `ValueError` explicite
+(jamais ignoré silencieusement) ; regex allowlist clientes refusées si elles
+contiennent un constructeur de nesting ReDoS (`+ * {`) et liste bornée à
+200 entrées — defense-in-depth, l'allowlist étant un paramètre de confiance
+côté appelant.
 
 ## Intégration : le proxy de périmètre
 
@@ -123,9 +124,11 @@ est recommandée avant toute restauration de données sensibles.
 - Tout run de 13-19 chiffres **Luhn-valide** est traité comme une carte
   bancaire. Un IMEI ou un numéro de série peut être masqué en `CB` :
   allowlistez-le. (Rappelé dans `usage_note` de chaque réponse.)
-- Hash 48 bits = **corrélation déterministe**, pas anonymisation
-  cryptographique : un espace petit (~10⁹ téléphones) reste brute-forçable
-  si le sel fuit. Le sel ne quitte jamais le client.
+- Hash = HMAC-SHA3-512 complet (128 hex, v1.3 — la troncature 48 bits est
+  morte) = **corrélation déterministe**, pas anonymisation cryptographique :
+  sans le sel, brute-force impossible ; avec le sel fuité, un espace d'entrée
+  petit (~10⁹ téléphones) reste énumérable. Le sel ne quitte jamais le
+  client. Le jeton long est assumé : il rend la protection visible.
 - Détection des personnes physiques : heuristique à dictionnaire, coverage
   annoncé 60-70 %.
 - Ce que le logiciel **fait** est décrit ; aucune affirmation de conformité
@@ -155,6 +158,29 @@ vulnérabilités **en privé** à l'auteur (voir `SECURITY.md`, sinon
 par l'issue tracker en privé) ; ne publiez pas d'exploit avant le correctif.
 
 ## Changelog
+
+### v1.3 (2026-10-07)
+
+Revue croisée Serrement des Serres (Kimi × Mistral Medium 3.5) — chaque
+prise vérifiée sur banc avant patch ; une correction de l'audit externe
+(liste des départements NIR proposée) était **fausse** et aurait cassé les
+vrais NIR 99 : la source reste la nomenclature INSEE, pas un LLM.
+
+- **`scan()` : suspicions sans champ `raw`** — le contrat sortant interdit
+  toute valeur brute (une suspicion CB-KEYWORD exposait le run complet).
+- **`entities` validé strictement** — valeur hors périmètre = `ValueError`
+  explicite (avant : silencieux = moteur aveugle sur faute de config).
+- **NIR : départements validés** — table INSEE complète : 01-95, 2A/2B, 99
+  (naissance à l'étranger), DOM/TOM 971-977, 984, 986-989.
+- **Allowlist : garde-fou anti-ReDoS** — refus des regex clientes contenant
+  `+ * {`, liste bornée à 200 entrées. La liste interne `lenient` (fixe,
+  auditée) n'est pas concernée.
+- **`restore()` single-pass** — remplacement en une seule passe par parsing
+  de jetons, fini le `str.replace` séquentiel sensible à l'ordre ; jeton
+  absent du mapping = erreur explicite.
+- **Hash SHA3-512 complet** — 128 hex au lieu de 12 : résistance
+  brute-force maximale, coût d'une itération HMAC, et un jeton qui se
+  *voit* — la sensibilisation sécurité passe aussi par les yeux.
 
 ### v1.2 (2026-10-04)
 
@@ -207,4 +233,3 @@ marques de l'auteur : la licence couvre le code, pas la marque.
 ## Auteurs
 
 Conçu et forgé par **Architecte1995** (Antoine Couet), avec **Kimi K 2.6 Thinking** et **K3** (Moonshot AI)
-Premier audit par mistral-medium-3-5 (Mistral AI).
