@@ -1,9 +1,15 @@
 """Batterie de tests — couche API OCCULTEUR (occulteur_logic.handle).
 Pure logique, zero SDK Workers : les memes specs tournent dans le bac a sable
-et dans le worker. 17 tests."""
+et dans le worker.
+
+v2 (2026-10-08, contrat v1.4-logic) : ajout des specs qui verrouillent le
+fix du JSON-sniffing conservateur + anti-DoS v1.3. Les 17 specs d'origine
+sont inchangées (aucune ne touchait le contrat modifié)."""
 import json
 import sys
-sys.path.insert(0, "/mnt/agents/output")
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from occulteur_logic import handle, KNOWN_ROUTES
 
 J = {"Content-Type": "application/json"}
@@ -82,6 +88,54 @@ def t_restore_anonymize_400():
 def t_restore_exige_json():
     st, p = handle("POST", "/restore", PII, "text/plain")
     assert st == 400 and "JSON" in p["error"], p
+
+# --- Specs v2 : verrouillent le contrat v1.4-logic (fix du 2026-10-08) ---
+
+def t_v2_json_log_brut_debute_acc_200():
+    """LE fix : un log JSON brut (commence par '{', pas de clé 'text') est
+    du TEXTE à scanner, pas une erreur. Avant v1.4 : 400 'invalid JSON body'."""
+    raw_log = '{"timestamp": "2026-10-08", "msg": "contact "}'
+    st, p = handle("POST", "/scan", raw_log, "text/plain; charset=utf-8", client="v2_accolade")
+    assert st == 200, (st, p)
+    st, p = handle("POST", "/scan", raw_log, "", client="v2_accolade2")  # même sans content-type
+    assert st == 200, (st, p)
+
+def t_v2_log_brut_debute_crochet_200():
+    """Body brut commençant par '[' (stack trace) non-JSON -> 200, texte brut."""
+    st, p = handle("POST", "/scan", "[ERROR] RuntimeError at line 42", "text/plain", client="v2_crochet")
+    assert st == 200, (st, p)
+
+def t_v2_wrapper_sniffe_sans_ct_200():
+    """Backward compat : un vrai wrapper sans content-type est toujours déballé."""
+    st, p = handle("POST", "/mask", json.dumps({"text": PII}), "", client="v2_sniff")
+    assert st == 200 and "[EMAIL_1]" in p["masked_text"], p
+
+def t_v2_text_non_string_400():
+    """{'text': 123} -> 400 propre (avant : 500 TypeError)."""
+    st, p = handle("POST", "/mask", json.dumps({"text": 123}), "application/json", client="v2_nonstr")
+    assert st == 400 and "text" in p["error"], (st, p)
+
+def t_v2_oversize_moteur_413():
+    st, p = handle("POST", "/mask", json.dumps({"text": "x" * 50001}), "application/json", client="v2_413m")
+    assert st == 413 and "trop long" in p["error"], (st, p)
+
+def t_v2_body_brut_geant_413():
+    st, p = handle("POST", "/scan", "y" * 300000, "text/plain", client="v2_413b")
+    assert st == 413, (st, p)
+
+def t_v2_rate_limit_429():
+    last = None
+    for _ in range(30):          # 30 requêtes : toutes passent
+        last, _ = handle("POST", "/mask", json.dumps({"text": PII}),
+                         "application/json", client="spec_bot")
+    assert last == 200, last
+    st, _ = handle("POST", "/mask", json.dumps({"text": PII}),   # la 31e : 429
+                   "application/json", client="spec_bot")
+    assert st == 429, st
+    # autre client non affecté
+    st, _ = handle("POST", "/mask", json.dumps({"text": PII}),
+                   "application/json", client="spec_autre")
+    assert st == 200, st
 
 ALL = [v for k, v in sorted(globals().items()) if k.startswith("t_")]
 fails = []
