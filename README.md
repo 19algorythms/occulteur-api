@@ -251,3 +251,13 @@ Conçu et forgé par **Architecte1995** (Antoine Couet), avec **Kimi K 2.6 Think
 
 **Audit 1 — Mistral Medium 3.5 (2026-10-07)** : revue croisée Serrement des
 Serres (Kimi × Mistral) du moteur v1.2 → v1.3 — détail dans le changelog v1.3.
+
+## Roadmap (si l'écho répond)
+
+- [ ] **Audits continus post-déploiement** : la boucle Audit N (Mistral, Kimi,
+      ou tiers) reste ouverte — chaque prise devient une spec ou une note
+      documentée. Le déploiement n'est pas la fin de la Forge, c'est son
+      entrée en service.
+- [ ] Rate limit configurable par plan d'abonnement (env var, sans recoder)
+- [ ] Doc d'intégration : chunking des documents >50k chars
+- [ ] Endpoints /mask et /scan exposés séparément sur le Hub
