@@ -127,8 +127,10 @@ est recommandée avant toute restauration de données sensibles.
 - Hash = HMAC-SHA3-512 complet (128 hex, v1.3 — la troncature 48 bits est
   morte) = **corrélation déterministe**, pas anonymisation cryptographique :
   sans le sel, brute-force impossible ; avec le sel fuité, un espace d'entrée
-  petit (~10⁹ téléphones) reste énumérable. Le sel ne quitte jamais le
-  client. Le jeton long est assumé : il rend la protection visible.
+  petit (~10⁹ téléphones) reste énumérable. Chemin auto-hébergé : le sel ne
+  quitte jamais le client. Chemin RapidAPI : le sel transite par l'API
+  (TLS, zéro état, zéro log) — exigez le mode auto-hébergé pour les données
+  les plus sensibles. Le jeton long est assumé : il rend la protection visible.
 - Détection des personnes physiques : heuristique à dictionnaire, coverage
   annoncé 60-70 %.
 - Ce que le logiciel **fait** est décrit ; aucune affirmation de conformité
