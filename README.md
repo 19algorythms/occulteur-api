@@ -7,7 +7,7 @@ Stdlib only. Déterministe byte-for-byte. Zéro état serveur. Aucun appel rése
 python api.py                # serveur local http://127.0.0.1:8787 (stdlib only)
 python test_occulteur.py     # 59/59 specs v1.1 + v1.2 (+ specs v1.3)
 python test_confesseur.py    # 30/30 specs v1.0 (non-régression via shim)
-python test_occulteur_api.py # 17/17 specs couche API
+python test_occulteur_api.py # 24/24 specs couche API (17 d'origine + 7 specs durcissement 2026-10-08)
 python examples.py           # vitrine exécutable -> voir EXAMPLES.md
 ```
 
@@ -161,6 +161,17 @@ par l'issue tracker en privé) ; ne publiez pas d'exploit avant le correctif.
 
 ## Changelog
 
+### 2026-10-08 — durcissement couche logique (moteur inchangé v1.3.0)
+
+- **JSON-sniffing conservateur** : un log brut commençant par `{`/`[` n'est
+  plus rejeté 400 — c'est du texte à scanner. Le content-type prime.
+- **Bornes anti-DoS** : body brut &gt; 200k → 413 avant parsing ; oversize
+  moteur → 413 (plus de 500 nucléaire).
+- **Rate limit glissant** 30 req/min/IP (clé X-Forwarded-For).
+- **Worker Cloudflare** : gate proxy-secret, OPTIONS répondu avant le gate
+  (preflight CORS), zéro log de payload.
+- Specs API 17 → 24 (les 7 nouvelles verrouillent ce contrat).
+
 ### v1.3 (2026-10-07)
 
 Revue croisée Serrement des Serres (Kimi × Mistral Medium 3.5) — chaque
@@ -235,3 +246,8 @@ marques de l'auteur : la licence couvre le code, pas la marque.
 ## Auteurs
 
 Conçu et forgé par **Architecte1995** (Antoine Couet), avec **Kimi K 2.6 Thinking** et **K3** (Moonshot AI)
+
+## Audits
+
+**Audit 1 — Mistral Medium 3.5 (2026-10-07)** : revue croisée Serrement des
+Serres (Kimi × Mistral) du moteur v1.2 → v1.3 — détail dans le changelog v1.3.
